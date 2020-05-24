@@ -13,6 +13,7 @@ import com.spark.model.{S3EventTriggerModel, StructCrimesModel}
 import com.spark.service.SQSService
 import org.apache.spark.sql.SparkSession
 
+import scala.io.Source
 import scala.util.parsing.json.JSONObject
 
 //spark-submit --class com.spark.App ./scala-maven-0.1-SNAPSHOT-jar-with-dependencies.jar
@@ -23,39 +24,39 @@ object App {
     val hadoopApi = "hdfs://localhost:9000"
 
     //DEFINE SPARK SESSION
-    println("spark session")
-    val spark = SparkSession.builder().appName("test").master("local").getOrCreate()
-
-    //CREATE SQS CLIENT
-    println("set sqs client")
-    val sqsService = new SQSService()
-
-    //READ MESSAGE AND PARSE S3 INFORMATIONS
-    println("read messages from SQS and parse")
-    val event: S3EventTriggerModel = sqsService.read()
+    println("configuring spark session")
+    val sparkSession = SparkSession.builder().appName("Crimes Big Data Spark Process").master("local").getOrCreate()
 
     //HADOOP CONFIGURATION
-    println("hadoop configuration")
+    println("configuring hadoop")
     val conf = new Configuration()
     conf.set("fs.defaultFS", hadoopApi)
     val fs = FileSystem.get(conf)
 
+    //CREATE SQS CLIENT
+    println("setting sqs client")
+    val sqsService = new SQSService()
+
+    //READ MESSAGE AND PARSE S3 INFORMATIONS
+    println("reading messages from SQS and parse")
+    val event: S3EventTriggerModel = sqsService.read()
+
     //DEFINE DESTINATION HDFS PATH
-    println("destination hdfs")
+    println("configuring destination hdfs")
     val finalPath = "/rawfiles/"+event.uuidFileName
     val output = fs.create(new Path(finalPath))
 
     //CREATE S3 CLIENT
-    println("set s3 client")
+    println("setting s3 client")
     val s3Client = S3Client.get()
 
     //GET S3 FILE
-    println("get s3 file")
+    println("getting s3 file")
     val obj = s3Client.getObject(event.bucketName, event.fileName)
 
     //SAVE FILE INTO HDFS
-    println("write file")
-    val reader = new BufferedReader(new InputStreamReader(obj.getObjectContent()))
+    println("writing file")
+    val reader = new BufferedReader(new InputStreamReader(obj.getObjectContent(), "ISO-8859-1"))
     val writer = new PrintWriter(output)
     var line = reader.readLine()
     do{
@@ -66,31 +67,39 @@ object App {
     writer.close()
 
     //REMOVE SQS
-    println("delete sqs message")
+    println("deleting sqs message")
     sqsService.delete(event.receiptHandle)
 
     //DEFINE SQL TEMPLATE
-    println("sql template")
+    println("defining sql template")
     val customSchema = StructCrimesModel.getStruct()
 
     //LOAD FILE FROM HDFS
-    println("load file")
-    val crimes = spark.read.schema(customSchema).option("encoding", "ISO-8859-1") .option("delimiter", ";").option("mode","DROPMALFORMED").format("org.apache.spark.sql.execution.datasources.csv.CSVFileFormat").load(hadoopApi+finalPath).toDF()
+    println("loading file")
+    //val finalPath = "/rawfiles/82d440b452f7d37bbdef9a98792a557b-dados-bo-2019-1-furto.csv"
+    val crimes = sparkSession.read.schema(customSchema).option("encoding", "UTF-8").option("delimiter", ";").option("mode","DROPMALFORMED").format("org.apache.spark.sql.execution.datasources.csv.CSVFileFormat").load(hadoopApi+finalPath).toDF()
 
     //CREATE VIEW
-    println("create view")
+    println("creating view")
     crimes.createOrReplaceTempView("crimes");
 
+    //LOAD SQL FILE WITH QUERY
+    println("loading query file")
+    val query = Source.fromFile("src/main/resources/sql/query-crimes.sql").mkString
+    //val query = Source.fromFile("src/main/resources/sql/count.sql").mkString
+    println(query)
+
     //QUERY (MINING)
-    println("sql file")
-    val query = "SELECT DATAOCORRENCIA, HORAOCORRENCIA, PERIDOOCORRENCIA, LOGRADOURO, NUMERO, BAIRRO, CIDADE, UF, LATITUDE, LONGITUDE, RUBRICA, DESCR_MARCA_VEICULO, DESCR_COR_VEICULO, ANO_FABRICACAO FROM crimes WHERE upper(CIDADE) == upper('S.PAULO') AND (upper(DESCRICAOLOCAL) == upper('Via Pública') OR upper(DESCRICAOLOCAL) == upper('Estacionamento Público')) AND (upper(RUBRICA) == upper('Furto (art. 155) - VEICULO') OR upper(RUBRICA) == upper('Roubo (art. 157) - VEICULO')) AND LATITUDE is not null AND LONGITUDE is not null AND PERIDOOCORRENCIA != 'EM HORA INCERTA' AND DESCR_TIPO_VEICULO is not null AND DESCR_MARCA_VEICULO is not null"
-    val sql = spark.sql(query);
+    println("doing query")
+    val sql = sparkSession.sql(query);
 
     //REMOVE NULL ITENS
     println("treating null")
     val sqlfill = sql.na.fill("", Seq("DATAOCORRENCIA")).na.fill("", Seq("HORAOCORRENCIA")).na.fill("", Seq("PERIDOOCORRENCIA")).na.fill("", Seq("LOGRADOURO")).na.fill("", Seq("NUMERO")).na.fill("", Seq("BAIRRO")).na.fill("", Seq("UF")).na.fill("", Seq("DESCR_COR_VEICULO")).na.fill("", Seq("ANO_FABRICACAO"))
 
     //SHOW ITENS
+    println("printing results")
+
     sqlfill.foreach {
       row => {
         val map = row.getValuesMap(row.schema.fieldNames)
@@ -100,6 +109,8 @@ object App {
     }
 
     println("Done!")
+
+    sparkSession.close()
 
   }
 

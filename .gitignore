@@ -1,2 +1,5 @@
 *.class
 *.log
+.idea/
+scala-maven.iml
+target/
