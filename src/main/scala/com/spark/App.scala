@@ -4,13 +4,13 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.FileSystem
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem, Path}
 import java.io.PrintWriter
 
 import com.spark.client.S3Client
+import com.spark.conf.AppProperties
 import com.spark.model.{S3EventTriggerModel, StructCrimesModel}
-import com.spark.service.SQSService
+import com.spark.service.{HDFSService, SQSService}
 import org.apache.spark.sql.SparkSession
 
 import scala.io.Source
@@ -21,30 +21,20 @@ import scala.util.parsing.json.JSONObject
 object App {
   def main(args: Array[String]) {
 
-    val hadoopApi = "hdfs://localhost:9000"
+    // APPLICATION PROPERTY CLASS
+    val property: AppProperties = new AppProperties()
 
     //DEFINE SPARK SESSION
     println("configuring spark session")
-    val sparkSession = SparkSession.builder().appName("Crimes Big Data Spark Process").master("local").getOrCreate()
+    val sparkSession = SparkSession.builder().appName(property.get("spark.application.name")).master("local").getOrCreate()
 
-    //HADOOP CONFIGURATION
-    println("configuring hadoop")
-    val conf = new Configuration()
-    conf.set("fs.defaultFS", hadoopApi)
-    val fs = FileSystem.get(conf)
-
-    //CREATE SQS CLIENT
-    println("setting sqs client")
+    //CREATE SQS SERVICE
+    println("setting sqs service")
     val sqsService = new SQSService()
 
     //READ MESSAGE AND PARSE S3 INFORMATIONS
     println("reading messages from SQS and parse")
     val event: S3EventTriggerModel = sqsService.read()
-
-    //DEFINE DESTINATION HDFS PATH
-    println("configuring destination hdfs")
-    val finalPath = "/rawfiles/"+event.uuidFileName
-    val output = fs.create(new Path(finalPath))
 
     //CREATE S3 CLIENT
     println("setting s3 client")
@@ -54,17 +44,15 @@ object App {
     println("getting s3 file")
     val obj = s3Client.getObject(event.bucketName, event.fileName)
 
-    //SAVE FILE INTO HDFS
+    //HADOOP SERVICE
+    println("setting hadoop service")
+    val hdfsService = new HDFSService()
+
+    //DEFINE DESTINATION HDFS PATH AND SAVE FILE INTO HDFS
     println("writing file")
+    val finalPath = property.get("hdfs.folder.upload")+event.uuidFileName
     val reader = new BufferedReader(new InputStreamReader(obj.getObjectContent(), "ISO-8859-1"))
-    val writer = new PrintWriter(output)
-    var line = reader.readLine()
-    do{
-      line = reader.readLine()
-      writer.print(line)
-      writer.print("\n")
-    }while(line != null)
-    writer.close()
+    hdfsService.writeStream(reader, hdfsService.createPath(finalPath))
 
     //REMOVE SQS
     println("deleting sqs message")
@@ -76,8 +64,8 @@ object App {
 
     //LOAD FILE FROM HDFS
     println("loading file")
-    //val finalPath = "/rawfiles/82d440b452f7d37bbdef9a98792a557b-dados-bo-2019-1-furto.csv"
-    val crimes = sparkSession.read.schema(customSchema).option("encoding", "UTF-8").option("delimiter", ";").option("mode","DROPMALFORMED").format("org.apache.spark.sql.execution.datasources.csv.CSVFileFormat").load(hadoopApi+finalPath).toDF()
+    //val finalPath = property.get("hdfs.folder.upload")+"82d440b452f7d37bbdef9a98792a557b-dados-bo-2019-1-furto.csv"
+    val crimes = sparkSession.read.schema(customSchema).option("encoding", "UTF-8").option("delimiter", ";").option("mode","DROPMALFORMED").format("org.apache.spark.sql.execution.datasources.csv.CSVFileFormat").load(property.get("hdfs.api")+finalPath).toDF()
 
     //CREATE VIEW
     println("creating view")
@@ -85,7 +73,7 @@ object App {
 
     //LOAD SQL FILE WITH QUERY
     println("loading query file")
-    val query = Source.fromFile("src/main/resources/sql/query-crimes.sql").mkString
+    val query = Source.fromFile(property.get("spark.sql.path.crimes")).mkString
     //val query = Source.fromFile("src/main/resources/sql/count.sql").mkString
     println(query)
 

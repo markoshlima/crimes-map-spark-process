@@ -2,6 +2,7 @@ package com.spark.model
 
 import org.apache.spark.sql.types._
 
+//MODEL STRUCT TO MAP CSV BUSINESS FILE
 object StructCrimesModel {
 
   def getStruct() = {
