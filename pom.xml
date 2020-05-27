@@ -9,6 +9,8 @@
     <version>0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
+    <name>Crimes Bigdata Spark Process</name>
+
     <dependencies>
 
         <!-- https://mvnrepository.com/artifact/org.scala-lang/scala-library -->

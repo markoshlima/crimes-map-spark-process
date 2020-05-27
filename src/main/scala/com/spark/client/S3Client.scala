@@ -2,12 +2,12 @@ package com.spark.client
 
 import com.amazonaws.auth.AWSStaticCredentialsProvider
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.spark.conf.{AppProperties, BasicAWSCredentials}
+import com.spark.conf.{AppProperties, AppPropertiesSingleton, BasicAWSCredentials}
 
 //OBJECT TO CREATE A CONNECTION CLIENT INTO AWS S3 SERVICE
 object S3Client {
 
-  val property: AppProperties = new AppProperties()
+  val property: AppProperties = AppPropertiesSingleton.getInstance()
 
   def get() = {
     AmazonS3ClientBuilder.standard()

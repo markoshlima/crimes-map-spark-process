@@ -5,12 +5,12 @@ import com.spark.client.SQSClient
 import com.spark.model.S3EventTriggerModel
 import play.api.libs.json.Json
 import com.amazonaws.services.sqs.model.Message
-import com.spark.conf.AppProperties
+import com.spark.conf.{AppProperties, AppPropertiesSingleton}
 
 //SERVICE TO ACCESS SQS RESOURCE FROM AWS
 class SQSService {
 
-  val property: AppProperties = new AppProperties()
+  val property: AppProperties = AppPropertiesSingleton.getInstance()
   private val sqsClient: AmazonSQS = SQSClient.get()
 
   // READ MESSAGE FROM SQS AND SET MAIN INFO ABOUT EVENT
@@ -19,7 +19,8 @@ class SQSService {
     val messagesSQS = sqsClient.receiveMessage(property.get("aws.sqs.queue.url")).getMessages
 
     if(messagesSQS.size == 0){
-      throw new Exception("There is no event to read")
+      println("There is no event to read")
+      return null
     }
 
     //INSTANTIATE MODEL WITH MAIN INFORMATION ABOUT S3 EVENT

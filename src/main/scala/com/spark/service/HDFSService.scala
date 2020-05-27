@@ -2,14 +2,14 @@ package com.spark.service
 
 import java.io.{BufferedReader, PrintWriter}
 
-import com.spark.conf.AppProperties
+import com.spark.conf.{AppProperties, AppPropertiesSingleton}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem, Path}
 
 //SERVICE TO ACCESS HDFS
 class HDFSService {
 
-  private val property: AppProperties = new AppProperties()
+  val property: AppProperties = AppPropertiesSingleton.getInstance()
   var conf = new Configuration()
   conf.set("fs.defaultFS", property.get("hdfs.api"))
   val fs = FileSystem.get(conf)

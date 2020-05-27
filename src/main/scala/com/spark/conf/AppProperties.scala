@@ -1,6 +1,7 @@
 package com.spark.conf
 
 import java.util.Properties
+
 import scala.io.Source
 
 // CLASS TO ACCESS PROPERTIES FROM APPLICATION.PROPERTIES FILE

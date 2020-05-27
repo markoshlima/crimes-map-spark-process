@@ -1,5 +1,5 @@
 *.class
 *.log
 .idea/
-scala-maven.iml
+crimes-bigdata-spark-process.iml
 target/
