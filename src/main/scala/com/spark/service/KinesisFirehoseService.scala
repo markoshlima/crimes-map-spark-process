@@ -16,7 +16,7 @@ class KinesisFirehoseService {
   putRecordRequest.setDeliveryStreamName(property.get("aws.kinesis.firehose.delivery.name"))
 
   // SEND TO DATA DELIVERY
-  def send(data: String) = {
+  def send(data: String): Unit = {
     val record: Record = new Record().withData(ByteBuffer.wrap(data.getBytes()))
     putRecordRequest.setRecord(record)
     firehoseClient.putRecord(putRecordRequest)

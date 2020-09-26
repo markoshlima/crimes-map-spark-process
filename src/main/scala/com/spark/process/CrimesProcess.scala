@@ -5,11 +5,12 @@ import java.io.{BufferedReader, InputStreamReader}
 import com.amazonaws.services.s3.AmazonS3
 import com.spark.conf.AppProperties
 import com.spark.model.{S3EventTriggerModel, StructCrimesModel}
-import com.spark.service.{HDFSService, SQSService, KinesisFirehoseService}
-import org.apache.spark.sql.SparkSession
+import com.spark.service.{HDFSService, KinesisFirehoseService, SQSService}
+import org.apache.spark.sql.{Row, SparkSession}
 
 import scala.io.Source
 import scala.util.parsing.json.JSONObject
+import scala.collection.mutable.ArrayBuffer
 
 object CrimesProcess {
 
@@ -37,10 +38,6 @@ object CrimesProcess {
     val reader = new BufferedReader(new InputStreamReader(obj.getObjectContent(), "ISO-8859-1"))
     hdfsService.writeStream(reader, hdfsService.createPath(finalPath))
 
-    //REMOVE SQS
-    println("deleting sqs message")
-    sqsService.delete(event.receiptHandle)
-
     //DEFINE SQL TEMPLATE
     println("defining sql template")
     val customSchema = StructCrimesModel.getStruct()
@@ -67,15 +64,17 @@ object CrimesProcess {
     println("treating null")
     val sqlfill = sql.na.fill("", Seq("DATAOCORRENCIA")).na.fill("", Seq("HORAOCORRENCIA")).na.fill("", Seq("PERIDOOCORRENCIA")).na.fill("", Seq("LOGRADOURO")).na.fill("", Seq("NUMERO")).na.fill("", Seq("BAIRRO")).na.fill("", Seq("UF")).na.fill("", Seq("DESCR_COR_VEICULO")).na.fill("", Seq("ANO_FABRICACAO"))
 
-    //SHOW ITENS
+    //SEND TO KINESIS
     println("sending to kinesis")
-    sqlfill.foreach {
-      row => {
-        val map = row.getValuesMap(row.schema.fieldNames)
-        val output = JSONObject(map)
-        firehoseService.send(output.toString())
-      }
+    for (row <- sqlfill.rdd.collect) {
+      val map = row.getValuesMap(row.schema.fieldNames)
+      val output = JSONObject(map)
+      firehoseService.send(output.toString())
     }
+
+    //REMOVE SQS
+    println("deleting sqs message")
+    sqsService.delete(event.receiptHandle)
 
     println("Done!")
 
