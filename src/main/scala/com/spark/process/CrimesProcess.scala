@@ -5,7 +5,7 @@ import java.io.{BufferedReader, InputStreamReader}
 import com.amazonaws.services.s3.AmazonS3
 import com.spark.conf.AppProperties
 import com.spark.model.{S3EventTriggerModel, StructCrimesModel}
-import com.spark.service.{HDFSService, SQSService}
+import com.spark.service.{HDFSService, SQSService, KinesisFirehoseService}
 import org.apache.spark.sql.SparkSession
 
 import scala.io.Source
@@ -17,7 +17,8 @@ object CrimesProcess {
               sparkSession: SparkSession,
               sqsService: SQSService,
               s3Client: AmazonS3,
-              hdfsService: HDFSService): Unit = {
+              hdfsService: HDFSService,
+              firehoseService: KinesisFirehoseService): Unit = {
 
     //READ MESSAGE AND PARSE S3 INFORMATIONS
     println("reading messages from SQS and parse if exists")
@@ -67,12 +68,12 @@ object CrimesProcess {
     val sqlfill = sql.na.fill("", Seq("DATAOCORRENCIA")).na.fill("", Seq("HORAOCORRENCIA")).na.fill("", Seq("PERIDOOCORRENCIA")).na.fill("", Seq("LOGRADOURO")).na.fill("", Seq("NUMERO")).na.fill("", Seq("BAIRRO")).na.fill("", Seq("UF")).na.fill("", Seq("DESCR_COR_VEICULO")).na.fill("", Seq("ANO_FABRICACAO"))
 
     //SHOW ITENS
-    println("printing results")
+    println("sending to kinesis")
     sqlfill.foreach {
       row => {
         val map = row.getValuesMap(row.schema.fieldNames)
         val output = JSONObject(map)
-        println(output)
+        firehoseService.send(output.toString())
       }
     }
 
